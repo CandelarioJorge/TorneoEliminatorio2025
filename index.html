@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Torneo – Pirámide Lateral con CSV</title>
+  <style>
+    /* Estilos generales */
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    #setup {
+      margin-bottom: 30px;
+    }
+    input[type="text"],
+    input[type="file"] {
+      padding: 5px;
+      font-size: 16px;
+      margin-bottom: 10px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    button {
+      padding: 5px 10px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    /* Contenedor del bracket */
+    #bracket {
+      position: relative;
+      margin: auto;
+      background: #fff;
+      border: 1px solid #ccc;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    }
+    /* Cada columna (ronda) se posiciona de forma absoluta */
+    .round {
+      position: absolute;
+      top: 0;
+      width: 150px;
+      border-right: 1px dashed #aaa;
+      box-sizing: border-box;
+    }
+    /* Título de cada etapa */
+    .round h2 {
+      margin: 0;
+      padding: 5px 0;
+      background: #ddd;
+      border-bottom: 1px solid #aaa;
+      font-size: 16px;
+    }
+    /* Estilo especial para la ronda final */
+    .final-round h2 {
+      background: #FFD700; /* tono dorado */
+      color: #000;
+    }
+    /* Cada partido se posiciona absolutamente dentro de su columna */
+    .match {
+      position: absolute;
+      width: 100%;
+      height: 70px;  /* Altura fija para cada contenedor de partido */
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    .match button {
+      width: 100%;
+      height: 50%;
+      box-sizing: border-box;
+      border: none;
+      cursor: pointer;
+      background: #eaeaea;
+      transition: background 0.2s;
+    }
+    .match button:hover {
+      background: #dcdcdc;
+    }
+    .match button.winner {
+      background: #4CAF50;
+      color: #fff;
+      font-weight: bold;
+    }
+    /* Estilo para el pie de página */
+    footer {
+      margin-top: 40px;
+      padding: 10px;
+      background: #eee;
+      font-size: 14px;
+      color: #333;
+    }
+    footer ul {
+      list-style-type: disc;
+      margin: 0;
+      padding-left: 20px;
+      text-align: left;
+      display: inline-block;
+    }
+    footer li {
+      margin-bottom: 5px;
+    }
+    footer hr {
+      margin: 20px 0;
+      border: none;
+      border-top: 1px solid #ccc;
+    }
+  </style>
+  <!-- Se incluye PapaParse para el procesamiento del CSV -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+</head>
+<body>
+  <!-- Título del torneo. Se actualizará según lo ingrese el usuario -->
+  <h1 id="tournamentTitle">Torneo – Pirámide Lateral con CSV</h1>
+  
+  <!-- Sección de configuración: campo para el nombre del torneo y carga de CSV -->
+  <div id="setup">
+    <input id="tournamentName" type="text" placeholder="Nombre del torneo">
+    <input id="csvFile" type="file" accept=".csv">
+    <button id="createTournament">Crear Torneo</button>
+  </div>
+  
+  <!-- Contenedor donde se genera el bracket -->
+  <div id="bracket"></div>
+  
+  <!-- Pie de página -->
+  <footer>
+    <div id="instructions">
+      <ul>
+        <li>El archivo para cargar el nombre de los participantes debe tener la extensión de archivo <code>.csv</code></li>
+        <li>El archivo debe contener 3 columnas:
+          <ul>
+            <li>Nombres</li>
+            <li>ApellidoPaterno</li>
+            <li>ApellidoMaterno</li>
+          </ul>
+        </li>
+        <li>El encabezado de la columna debe estar escrito exactamente como se muestra para funcionar correctamente</li>
+      </ul>
+    </div>
+    <hr>
+    <div id="footerCredits">
+      Desarrollado por: Ing. Jorge Luis Candelario Alavez a traves del uso de ChatGPT O3-mini-high febrero 2025<br>
+      Para uso educativo, queda prohibido su uso con fines comerciales
+    </div>
+  </footer>
+  
+  <script>
+    // Función auxiliar: obtiene la siguiente potencia de 2 mayor o igual que n
+    function nextPowerOfTwo(n) {
+      return Math.pow(2, Math.ceil(Math.log2(n)));
+    }
+    
+    // Función para crear el bracket, recibiendo un arreglo de participantes
+    function createBracket(participants) {
+      const realParticipants = participants.length;
+      // Se calcula el total de slots (la siguiente potencia de 2)
+      const totalSlots = nextPowerOfTwo(realParticipants);
+      const rounds = Math.log2(totalSlots);
+      
+      // CONSTANTES DE DISEÑO
+      const headerHeight = 40; // Altura del título de cada columna
+      const matchHeight = 70;  // Altura de cada partido
+      const vGap = 40;         // Espacio vertical entre partidos en la ronda 1 (espacio mayor)
+      const hSpacing = 200;    // Espacio horizontal entre columnas/rondas
+      
+      // Calcular las posiciones verticales para cada partido
+      let positions = {};
+      const numMatchesRound1 = totalSlots / 2;
+      positions[1] = [];
+      for (let i = 0; i < numMatchesRound1; i++) {
+        positions[1][i] = i * (matchHeight + vGap);
+      }
+      for (let r = 2; r <= rounds; r++) {
+        positions[r] = [];
+        let numMatches = totalSlots / Math.pow(2, r);
+        for (let i = 0; i < numMatches; i++) {
+          positions[r][i] = (positions[r-1][2*i] + positions[r-1][2*i+1]) / 2;
+        }
+      }
+      
+      const totalHeight = headerHeight + positions[1][numMatchesRound1 - 1] + matchHeight;
+      
+      // Configurar el contenedor del bracket
+      const bracketDiv = document.getElementById("bracket");
+      bracketDiv.innerHTML = "";
+      bracketDiv.style.width = (rounds * hSpacing + 150) + "px";
+      bracketDiv.style.height = totalHeight + "px";
+      
+      let participantCount = 0;
+      
+      // Generar cada ronda (columna)
+      for (let r = 1; r <= rounds; r++) {
+        const roundDiv = document.createElement("div");
+        roundDiv.className = "round";
+        if (r === rounds) {
+          roundDiv.classList.add("final-round");
+        }
+        roundDiv.style.left = ((r - 1) * hSpacing) + "px";
+        roundDiv.style.height = totalHeight + "px";
+        
+        // Título de la ronda
+        const headerElem = document.createElement("h2");
+        headerElem.textContent = (r === rounds) ? "Final" : "Ronda " + r;
+        roundDiv.appendChild(headerElem);
+        
+        const numMatches = totalSlots / Math.pow(2, r);
+        for (let m = 0; m < numMatches; m++) {
+          const matchDiv = document.createElement("div");
+          matchDiv.className = "match";
+          matchDiv.setAttribute("data-round", r);
+          matchDiv.setAttribute("data-match", m);
+          matchDiv.style.top = (positions[r][m] + headerHeight) + "px";
+          
+          // Cada partido tiene 2 botones (participantes)
+          for (let s = 0; s < 2; s++) {
+            const btn = document.createElement("button");
+            btn.className = "participant";
+            btn.setAttribute("data-round", r);
+            btn.setAttribute("data-match", m);
+            btn.setAttribute("data-slot", s);
+            if (r === 1) {
+              if (participantCount < realParticipants) {
+                // Asignar "nombres" + " " + "ApellidoPaterno" al botón
+                btn.textContent = participants[participantCount];
+                participantCount++;
+              } else {
+                btn.textContent = "Bye";
+              }
+            } else {
+              btn.textContent = "--";
+            }
+            matchDiv.appendChild(btn);
+          }
+          roundDiv.appendChild(matchDiv);
+        }
+        bracketDiv.appendChild(roundDiv);
+      }
+      
+      // Función para propagar el ganador a la siguiente ronda
+      function propagateWinner(btn) {
+        const currentRound = parseInt(btn.getAttribute("data-round"));
+        const currentMatch = parseInt(btn.getAttribute("data-match"));
+        const nextRound = currentRound + 1;
+        if (nextRound > rounds) return;
+        const nextMatch = Math.floor(currentMatch / 2);
+        const nextSlot = (currentMatch % 2 === 0) ? 0 : 1;
+        const nextBtn = bracketDiv.querySelector(
+          '.participant[data-round="'+ nextRound +'"][data-match="'+ nextMatch +'"][data-slot="'+ nextSlot +'"]'
+        );
+        if (nextBtn) {
+          nextBtn.textContent = btn.textContent;
+        }
+      }
+      
+      // Permitir la selección manual cuando ambos botones tengan un valor asignado
+      const buttons = bracketDiv.querySelectorAll(".participant");
+      buttons.forEach(btn => {
+        btn.addEventListener("click", function() {
+          const matchDiv = this.parentElement;
+          const btns = matchDiv.querySelectorAll(".participant");
+          if (btns[0].textContent === "--" || btns[1].textContent === "--") return;
+          if (matchDiv.querySelector(".winner")) return;
+          btns.forEach(b => b.classList.remove("winner"));
+          this.classList.add("winner");
+          propagateWinner(this);
+        });
+      });
+    }
+    
+    // Evento para cargar el CSV y crear el torneo
+    document.getElementById("createTournament").addEventListener("click", function() {
+      // Actualizar el título del torneo con el valor ingresado, si existe, y limpiar el campo
+      const tournamentNameInput = document.getElementById("tournamentName");
+      const nameValue = tournamentNameInput.value.trim();
+      if(nameValue !== ""){
+        document.getElementById("tournamentTitle").textContent = nameValue;
+        tournamentNameInput.value = "";
+      }
+      
+      const fileInput = document.getElementById("csvFile");
+      if (fileInput.files.length === 0) {
+        alert("Por favor, selecciona un archivo CSV.");
+        return;
+      }
+      const file = fileInput.files[0];
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          console.log("Datos CSV:", results.data);
+          const data = results.data;
+          // Extraer "nombres" y "ApellidoPaterno" de cada fila
+          const participants = data.map(row => {
+            const nombre = (row["nombres"] || row["Nombres"] || "").trim();
+            const apellidoPaterno = (row["ApellidoPaterno"] || "").trim();
+            return nombre + " " + apellidoPaterno;
+          });
+          console.log("Participantes extraídos:", participants);
+          createBracket(participants);
+        },
+        error: function(error) {
+          console.error("Error al procesar el CSV:", error);
+          alert("Error al leer el archivo CSV.");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
